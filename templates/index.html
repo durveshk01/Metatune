@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Metadata Generator</title>
+    <!-- Modern Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+</head>
+<body>
+    <div class="app-wrapper">
+        <!-- Top Navigation -->
+        <header class="top-nav">
+            <div class="nav-logo">
+                <i data-lucide="audio-lines" class="logo-icon"></i>
+                <span class="logo-text">Audio Metadata Generator</span>
+            </div>
+            <div class="nav-status">
+                <span class="badge"><i data-lucide="sparkles"></i> AI Powered</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Hero Section -->
+            <section class="hero" id="heroSection">
+                <h1>Perfect Metadata.<br><span class="gradient-text">Perfect Sound.</span></h1>
+                <p>Add pristine metadata and stunning AI-generated artwork to your tracks.</p>
+            </section>
+
+            <div class="container">
+                <!-- Audio Upload Card -->
+                <section class="card upload-card" id="audioUploadCard">
+                    <label class="drop-zone" id="audioDropZone">
+                        <input id="audioFile" name="audio_file" type="file" accept=".mp3,.m4a,audio/mpeg,audio/mp4" required>
+                        <div class="drop-content">
+                            <div class="icon-circle">
+                                <i data-lucide="upload-cloud"></i>
+                            </div>
+                            <h3>Drop MP3 or M4A here</h3>
+                            <p class="text-muted">or click to browse your files</p>
+                        </div>
+                    </label>
+                </section>
+
+                <!-- Audio Preview Card (Hidden initially) -->
+                <section class="card audio-preview-card hidden" id="audioPreviewCard">
+                    <div class="audio-info">
+                        <div class="audio-icon"><i data-lucide="music"></i></div>
+                        <div class="audio-details">
+                            <h4 id="audioFileNameDisplay">filename.mp3</h4>
+                            <p id="audioFileSizeDisplay" class="text-muted">0 MB</p>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-text" id="changeAudioBtn">
+                        <i data-lucide="refresh-cw"></i> Change File
+                    </button>
+                </section>
+
+                <!-- Metadata Form (Hidden initially) -->
+                <form id="metadataForm" class="hidden">
+                    <div class="form-grid">
+                        
+                        <!-- Left Column: Text Metadata -->
+                        <div class="metadata-column">
+                            <div class="card form-section">
+                                <h3 class="section-title"><i data-lucide="file-text"></i> Track Information</h3>
+                                <div class="input-group">
+                                    <label>Song Title</label>
+                                    <input id="metaTitle" name="title" type="text" placeholder="e.g. Midnight Drive" required>
+                                </div>
+                                <div class="input-group">
+                                    <label>Artist</label>
+                                    <input id="metaArtist" name="artist" type="text" placeholder="e.g. Synthwave Legend" required>
+                                </div>
+
+                                <h3 class="section-title mt-6"><i data-lucide="disc"></i> Album Information</h3>
+                                <div class="input-group">
+                                    <label>Album</label>
+                                    <input id="metaAlbum" name="album" type="text" placeholder="e.g. Neon Nights" required>
+                                </div>
+                                <div class="grid-2">
+                                    <div class="input-group">
+                                        <label>Genre</label>
+                                        <input id="metaGenre" name="genre" type="text" placeholder="e.g. Synthwave" required>
+                                    </div>
+                                    <div class="input-group">
+                                        <label>Year</label>
+                                        <input id="metaYear" name="year" type="number" min="0" max="9999" placeholder="2026" required>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Artwork -->
+                        <div class="artwork-column">
+                            <div class="card artwork-section">
+                                
+                                <!-- Central Preview -->
+                                <div class="artwork-preview-container">
+                                    <img id="mainArtworkPreview" src='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" fill="%23141414"><rect width="400" height="400" fill="%23141414"/><path d="M200 130C161.4 130 130 161.4 130 200s31.4 70 70 70 70-31.4 70-70-31.4-70-70-70zm0 120c-27.6 0-50-22.4-50-50s22.4-50 50-50 50 22.4 50 50-22.4 50-50 50z" fill="%2327272a"/></svg>' alt="Album Artwork Preview">
+                                    <div class="artwork-overlay">
+                                        <span id="artworkStatusBadge" class="badge">No Artwork</span>
+                                    </div>
+                                </div>
+
+                                <div class="tabs mt-4">
+                                    <button type="button" class="tab-btn active" data-target="tab-upload">Upload Artwork</button>
+                                    <button type="button" class="tab-btn ai-tab-btn" data-target="tab-ai"><i data-lucide="sparkles"></i> Generate AI</button>
+                                </div>
+                                
+                                <!-- Upload Tab -->
+                                <div id="tab-upload" class="tab-content">
+                                    <label class="drop-zone small" id="coverDropZone">
+                                        <input id="coverImage" name="cover_image" type="file" accept="image/jpeg,image/png">
+                                        <div class="drop-content">
+                                            <i data-lucide="image-plus"></i>
+                                            <p>Drop JPG/PNG</p>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <!-- Generate AI Tab -->
+                                <div id="tab-ai" class="tab-content hidden">
+                                    <div class="grid-2">
+                                        <div class="input-group">
+                                            <label>Visual Style</label>
+                                            <select id="aiStyle">
+                                                <option value="">Auto</option>
+                                                <option value="Cinematic">Cinematic</option>
+                                                <option value="Cyberpunk">Cyberpunk</option>
+                                                <option value="Neon">Neon</option>
+                                                <option value="Retro">Retro</option>
+                                                <option value="Minimal">Minimal</option>
+                                                <option value="Abstract">Abstract</option>
+                                                <option value="Anime">Anime</option>
+                                                <option value="Photorealistic">Photorealistic</option>
+                                            </select>
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Mood</label>
+                                            <select id="aiMood">
+                                                <option value="">Auto</option>
+                                                <option value="Energetic">Energetic</option>
+                                                <option value="Dark">Dark</option>
+                                                <option value="Emotional">Emotional</option>
+                                                <option value="Chill">Chill</option>
+                                                <option value="Dreamy">Dreamy</option>
+                                                <option value="Aggressive">Aggressive</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="input-group mt-2">
+                                        <label>Extra Details (Optional)</label>
+                                        <input type="text" id="aiDesc" placeholder="e.g. A futuristic city at night...">
+                                    </div>
+                                    <div class="input-group mt-2">
+                                        <div class="label-row flex-between">
+                                            <label>AI Prompt</label>
+                                            <button type="button" id="autoPromptBtn" class="btn-xs"><i data-lucide="wand-2"></i> Auto Fill</button>
+                                        </div>
+                                        <textarea id="aiPrompt" rows="3" placeholder="Describe the cover or click Auto Fill..."></textarea>
+                                    </div>
+                                    <button type="button" id="generateAiBtn" class="btn-secondary w-full mt-2">
+                                        <i data-lucide="sparkles"></i> Generate Covers
+                                    </button>
+                                    
+                                    <div id="aiLoading" class="ai-loading-state hidden mt-4">
+                                        <i data-lucide="loader-2" class="spin text-primary mb-2"></i>
+                                        <p id="aiLoadingText">Composing your artwork...</p>
+                                    </div>
+                                    
+                                    <div id="aiGallery" class="ai-gallery hidden mt-4">
+                                        <!-- Images injected via JS -->
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Generate Metadata CTA -->
+                    <div class="form-actions mt-6">
+                        <button type="submit" class="btn-primary" id="generateMetadataBtn">
+                            <i data-lucide="check-circle"></i> Embed Metadata & Download
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Progress Modal -->
+    <div id="progressModal" class="modal hidden">
+        <div class="modal-card">
+            <h2 class="mb-4">Processing Track</h2>
+            <div class="progress-steps">
+                <div class="step-item" id="step1"><i data-lucide="circle"></i> <span>Uploading Audio</span></div>
+                <div class="step-item" id="step2"><i data-lucide="circle"></i> <span>Reading Audio Data</span></div>
+                <div class="step-item" id="step3"><i data-lucide="circle"></i> <span>Generating Metadata</span></div>
+                <div class="step-item" id="step4"><i data-lucide="circle"></i> <span>Embedding Artwork</span></div>
+                <div class="step-item" id="step5"><i data-lucide="circle"></i> <span>Finalizing File</span></div>
+            </div>
+            <div class="progress-wrap mt-4">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="modal hidden">
+        <div class="modal-card text-center success-card">
+            <div class="success-icon"><i data-lucide="check-circle-2"></i></div>
+            <h2 class="mt-2">Your Track is Ready!</h2>
+            <p class="text-muted mb-4">Metadata and artwork successfully embedded.</p>
+            <div class="success-cover-wrap">
+                <img id="successCoverPreview" src="" alt="Final Cover">
+            </div>
+            <div class="success-details mt-4 mb-6">
+                <h3 id="successTitle" class="font-bold"></h3>
+                <p id="successArtist" class="text-muted"></p>
+            </div>
+            <button type="button" class="btn-primary w-full" id="downloadBtn">
+                <i data-lucide="download"></i> Download Tagged Audio
+            </button>
+            <button type="button" class="btn-text w-full mt-2" id="processAnotherBtn">
+                Process Another Track
+            </button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', path='/script.js') }}"></script>
+    <script>
+        // Initialize icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>

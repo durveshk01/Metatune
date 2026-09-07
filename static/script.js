@@ -257,17 +257,27 @@ metadataForm.addEventListener('submit', (e) => {
 
     xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
-            const pct = Math.min(40, Math.round((e.loaded / e.total) * 40));
+            const pct = Math.min(50, Math.round((e.loaded / e.total) * 50));
             progressBar.style.width = pct + '%';
-            if (pct === 40) {
+            if (pct >= 50 && !document.getElementById('step1').classList.contains('completed')) {
                 completeStep('step1');
                 setStepProgress('step2');
-                setTimeout(() => {
-                    progressBar.style.width = '60%';
-                    completeStep('step2');
-                    setStepProgress('step3');
-                }, 500);
+                completeStep('step2');
+                setStepProgress('step3');
             }
+        }
+    });
+
+    xhr.addEventListener("progress", (e) => {
+        if (!document.getElementById('step3').classList.contains('completed')) {
+            completeStep('step3');
+            setStepProgress('step4');
+        }
+        if (e.lengthComputable) {
+            const pct = 50 + Math.min(45, Math.round((e.loaded / e.total) * 45));
+            progressBar.style.width = pct + '%';
+        } else {
+            progressBar.style.width = '85%';
         }
     });
 
@@ -281,7 +291,7 @@ metadataForm.addEventListener('submit', (e) => {
             setTimeout(() => {
                 progressModal.classList.add('hidden');
                 showSuccess(xhr.response, xhr.getResponseHeader("Content-Disposition"));
-            }, 600);
+            }, 100);
         } else {
             progressModal.classList.add('hidden');
             alert("Failed to generate metadata.");

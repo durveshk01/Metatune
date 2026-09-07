@@ -211,12 +211,20 @@ const progressModal = document.getElementById('progressModal');
 const progressBar = document.getElementById('progressBar');
 const successModal = document.getElementById('successModal');
 
+function updateIcon(el, iconName, spin) {
+    const icon = el.querySelector('i, svg');
+    if (icon) icon.remove();
+    const i = document.createElement('i');
+    i.setAttribute('data-lucide', iconName);
+    if (spin) i.classList.add('spin');
+    el.insertBefore(i, el.firstChild);
+}
+
 function setStepProgress(stepId) {
     document.querySelectorAll('.step-item').forEach(el => {
         if(el.id === stepId) {
             el.classList.add('active');
-            el.querySelector('i').setAttribute('data-lucide', 'loader-2');
-            el.querySelector('i').classList.add('spin');
+            updateIcon(el, 'loader-2', true);
         } else {
             el.classList.remove('active');
         }
@@ -226,10 +234,10 @@ function setStepProgress(stepId) {
 
 function completeStep(stepId) {
     const el = document.getElementById(stepId);
+    if (!el) return;
     el.classList.remove('active');
     el.classList.add('completed');
-    el.querySelector('i').setAttribute('data-lucide', 'check-circle-2');
-    el.querySelector('i').classList.remove('spin');
+    updateIcon(el, 'check-circle-2', false);
     lucide.createIcons();
 }
 
@@ -343,8 +351,7 @@ document.getElementById('processAnotherBtn').addEventListener('click', () => {
     
     document.querySelectorAll('.step-item').forEach(el => {
         el.classList.remove('active', 'completed');
-        el.querySelector('i').setAttribute('data-lucide', 'circle');
-        el.querySelector('i').classList.remove('spin');
+        updateIcon(el, 'circle', false);
     });
     progressBar.style.width = '0%';
     lucide.createIcons();

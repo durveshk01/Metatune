@@ -326,14 +326,8 @@ function showSuccess(blob, disposition) {
     const filename = match ? match[1] : "tagged_audio.mp3";
     
     const downloadBtn = document.getElementById('downloadBtn');
-    downloadBtn.onclick = () => {
-        const a = document.createElement('a');
-        a.href = downloadBlobUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-    };
+    downloadBtn.href = downloadBlobUrl;
+    downloadBtn.download = filename;
 }
 
 document.getElementById('processAnotherBtn').addEventListener('click', () => {

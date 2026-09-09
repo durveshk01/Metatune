@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Metadata Generator</title>
+    <title>Metatune Workspace</title>
     <!-- Modern Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,189 +11,429 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Stylesheet -->
-    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}?v=7">
 </head>
 <body>
-    <div class="app-wrapper">
-        <!-- Top Navigation -->
-        <header class="top-nav">
-            <div class="nav-logo">
+    <div class="app-layout">
+        
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
                 <i data-lucide="audio-lines" class="logo-icon"></i>
-                <span class="logo-text">Audio Metadata Generator</span>
+                <span class="logo-text">Metatune Pro</span>
             </div>
-            <div class="nav-status">
-                <span class="badge"><i data-lucide="sparkles"></i> AI Powered</span>
-            </div>
-        </header>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <span class="nav-label">Workspace</span>
+                    <button class="nav-item active" data-target="view-dashboard"><i data-lucide="layout-dashboard"></i> Dashboard</button>
+                    <button class="nav-item" data-target="view-library"><i data-lucide="library"></i> My Library</button>
+                    <button class="nav-item" data-target="view-editor"><i data-lucide="file-edit"></i> Metadata Editor</button>
+                    <button class="nav-item" data-target="view-batch"><i data-lucide="copy-check"></i> Batch Editor</button>
+                </div>
+                
+                <div class="nav-section">
+                    <span class="nav-label">Tools</span>
+                    <button class="nav-item" data-target="view-studio"><i data-lucide="palette"></i> Artwork Studio</button>
+                    <button class="nav-item" data-target="view-analyzer"><i data-lucide="activity"></i> Audio Analyzer</button>
+                </div>
+            </nav>
 
-        <!-- Main Content -->
+            <div class="sidebar-footer">
+                <button class="nav-item"><i data-lucide="settings"></i> Settings</button>
+                <button class="nav-item"><i data-lucide="user"></i> Profile</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
         <main class="main-content">
-            <!-- Hero Section -->
-            <section class="hero" id="heroSection">
-                <h1>Perfect Metadata.<br><span class="gradient-text">Perfect Sound.</span></h1>
-                <p>Add pristine metadata and stunning AI-generated artwork to your tracks.</p>
+            
+            <!-- GLOBAL HEADER / QUICK ACTIONS -->
+            <header class="top-header">
+                <div class="quick-actions">
+                    <button class="btn-primary" id="globalUploadBtn"><i data-lucide="upload"></i> Upload Track</button>
+                    <button class="btn-secondary" onclick="app.switchView('view-studio')"><i data-lucide="sparkles"></i> Generate AI Art</button>
+                </div>
+                <div class="header-tools">
+                    <div class="completeness-widget hidden" id="completenessWidget">
+                        <div class="comp-text">
+                            <span>Metadata Completeness</span>
+                            <span id="compPercentage" class="text-primary">0%</span>
+                        </div>
+                        <div class="comp-bar-bg"><div class="comp-bar-fill" id="compBar"></div></div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- VIEW: DASHBOARD -->
+            <section id="view-dashboard" class="view active">
+                <h1 class="view-title">Home Dashboard</h1>
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <i data-lucide="music-4"></i>
+                        <div class="stat-info">
+                            <span class="stat-value" id="statTracks">0</span>
+                            <span class="stat-label">Tracks Processed</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i data-lucide="image"></i>
+                        <div class="stat-info">
+                            <span class="stat-value" id="statArtworks">0</span>
+                            <span class="stat-label">AI Artworks</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i data-lucide="hard-drive"></i>
+                        <div class="stat-info">
+                            <span class="stat-value" id="statStorage">0 MB</span>
+                            <span class="stat-label">Storage Used</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-recent mt-6">
+                    <h2 class="section-title">Recent Activity</h2>
+                    <div class="recent-list" id="dashboardRecentList">
+                        <!-- Populated by JS -->
+                        <div class="empty-state">
+                            <i data-lucide="inbox"></i>
+                            <p>No recent activity. Upload a track to get started.</p>
+                        </div>
+                    </div>
+                </div>
             </section>
 
-            <div class="container">
-                <!-- Audio Upload Card -->
-                <section class="card upload-card" id="audioUploadCard">
-                    <label class="drop-zone" id="audioDropZone">
-                        <input id="audioFile" name="audio_file" type="file" accept=".mp3,.m4a,audio/mpeg,audio/mp4" required>
-                        <div class="drop-content">
-                            <div class="icon-circle">
-                                <i data-lucide="upload-cloud"></i>
-                            </div>
-                            <h3>Drop MP3 or M4A here</h3>
-                            <p class="text-muted">or click to browse your files</p>
-                        </div>
-                    </label>
-                </section>
-
-                <!-- Audio Preview Card (Hidden initially) -->
-                <section class="card audio-preview-card hidden" id="audioPreviewCard">
-                    <div class="audio-info">
-                        <div class="audio-icon"><i data-lucide="music"></i></div>
-                        <div class="audio-details">
-                            <h4 id="audioFileNameDisplay">filename.mp3</h4>
-                            <p id="audioFileSizeDisplay" class="text-muted">0 MB</p>
-                        </div>
+            <!-- VIEW: METADATA EDITOR -->
+            <section id="view-editor" class="view hidden">
+                <div class="editor-header flex-between mb-4">
+                    <h1 class="view-title mb-0">Metadata Editor</h1>
+                    <div class="editor-actions">
+                        <button class="btn-secondary btn-sm" id="btnAutoDetect" disabled><i data-lucide="wand-2"></i> Auto Detect</button>
+                        <button class="btn-secondary btn-sm" id="btnUndo" disabled title="Undo (Ctrl+Z)"><i data-lucide="undo-2"></i></button>
+                        <button class="btn-secondary btn-sm" id="btnRedo" disabled title="Redo (Ctrl+Shift+Z)"><i data-lucide="redo-2"></i></button>
+                        <button class="btn-primary btn-sm" id="btnSaveExport" disabled><i data-lucide="download"></i> Save & Export</button>
                     </div>
-                    <button type="button" class="btn-text" id="changeAudioBtn">
-                        <i data-lucide="refresh-cw"></i> Change File
-                    </button>
-                </section>
+                </div>
 
-                <!-- Metadata Form (Hidden initially) -->
+                <!-- Dropzone (Shown if no file) -->
+                <label class="drop-zone" id="editorDropZone">
+                    <input id="audioFile" name="audio_file" type="file" accept=".mp3,.m4a,audio/mpeg,audio/mp4">
+                    <div class="drop-content">
+                        <div class="icon-circle"><i data-lucide="upload-cloud"></i></div>
+                        <h3>Drop audio file here</h3>
+                        <p class="text-muted">or click to browse</p>
+                    </div>
+                </label>
+
+                <!-- Editor Form (Shown if file loaded) -->
                 <form id="metadataForm" class="hidden">
-                    <div class="form-grid">
-                        
-                        <!-- Left Column: Text Metadata -->
-                        <div class="metadata-column">
-                            <div class="card form-section">
-                                <h3 class="section-title"><i data-lucide="file-text"></i> Track Information</h3>
-                                <div class="input-group">
-                                    <label>Song Title</label>
-                                    <input id="metaTitle" name="title" type="text" placeholder="e.g. Midnight Drive" required>
-                                </div>
-                                <div class="input-group">
-                                    <label>Artist</label>
-                                    <input id="metaArtist" name="artist" type="text" placeholder="e.g. Synthwave Legend" required>
-                                </div>
-
-                                <h3 class="section-title mt-6"><i data-lucide="disc"></i> Album Information</h3>
-                                <div class="input-group">
-                                    <label>Album</label>
-                                    <input id="metaAlbum" name="album" type="text" placeholder="e.g. Neon Nights" required>
-                                </div>
-                                <div class="grid-2">
-                                    <div class="input-group">
-                                        <label>Genre</label>
-                                        <input id="metaGenre" name="genre" type="text" placeholder="e.g. Synthwave" required>
-                                    </div>
-                                    <div class="input-group">
-                                        <label>Year</label>
-                                        <input id="metaYear" name="year" type="number" min="0" max="9999" placeholder="2026" required>
-                                    </div>
-                                </div>
+                    <div class="editor-layout">
+                        <!-- Left: Tabs & Fields -->
+                        <div class="editor-main">
+                            <div class="tabs">
+                                <button type="button" class="tab-btn active" data-tab="tab-basic">Basic Info</button>
+                                <button type="button" class="tab-btn" data-tab="tab-album">Album Info</button>
+                                <button type="button" class="tab-btn" data-tab="tab-advanced">Advanced</button>
+                                <button type="button" class="tab-btn" data-tab="tab-artwork">Artwork</button>
                             </div>
-                        </div>
 
-                        <!-- Right Column: Artwork -->
-                        <div class="artwork-column">
-                            <div class="card artwork-section">
-                                
-                                <!-- Central Preview -->
-                                <div class="artwork-preview-container">
-                                    <img id="mainArtworkPreview" src='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" fill="%23141414"><rect width="400" height="400" fill="%23141414"/><path d="M200 130C161.4 130 130 161.4 130 200s31.4 70 70 70 70-31.4 70-70-31.4-70-70-70zm0 120c-27.6 0-50-22.4-50-50s22.4-50 50-50 50 22.4 50 50-22.4 50-50 50z" fill="%2327272a"/></svg>' alt="Album Artwork Preview">
-                                    <div class="artwork-overlay">
-                                        <span id="artworkStatusBadge" class="badge">No Artwork</span>
-                                    </div>
-                                </div>
-
-                                <div class="tabs mt-4">
-                                    <button type="button" class="tab-btn active" data-target="tab-upload">Upload Artwork</button>
-                                    <button type="button" class="tab-btn ai-tab-btn" data-target="tab-ai"><i data-lucide="sparkles"></i> Generate AI</button>
-                                </div>
-                                
-                                <!-- Upload Tab -->
-                                <div id="tab-upload" class="tab-content">
-                                    <label class="drop-zone small" id="coverDropZone">
-                                        <input id="coverImage" name="cover_image" type="file" accept="image/jpeg,image/png">
-                                        <div class="drop-content">
-                                            <i data-lucide="image-plus"></i>
-                                            <p>Drop JPG/PNG</p>
-                                        </div>
-                                    </label>
-                                </div>
-
-                                <!-- Generate AI Tab -->
-                                <div id="tab-ai" class="tab-content hidden">
+                            <div class="tab-panels card mt-4">
+                                <!-- Basic Info -->
+                                <div id="tab-basic" class="tab-panel active">
                                     <div class="grid-2">
                                         <div class="input-group">
-                                            <label>Visual Style</label>
-                                            <select id="aiStyle">
-                                                <option value="">Auto</option>
-                                                <option value="Cinematic">Cinematic</option>
-                                                <option value="Cyberpunk">Cyberpunk</option>
-                                                <option value="Neon">Neon</option>
-                                                <option value="Retro">Retro</option>
-                                                <option value="Minimal">Minimal</option>
-                                                <option value="Abstract">Abstract</option>
-                                                <option value="Anime">Anime</option>
-                                                <option value="Photorealistic">Photorealistic</option>
-                                            </select>
+                                            <label>Song Title *</label>
+                                            <input id="metaTitle" name="title" type="text" data-track="true" required>
                                         </div>
                                         <div class="input-group">
-                                            <label>Mood</label>
-                                            <select id="aiMood">
-                                                <option value="">Auto</option>
-                                                <option value="Energetic">Energetic</option>
-                                                <option value="Dark">Dark</option>
-                                                <option value="Emotional">Emotional</option>
-                                                <option value="Chill">Chill</option>
-                                                <option value="Dreamy">Dreamy</option>
-                                                <option value="Aggressive">Aggressive</option>
-                                            </select>
+                                            <label>Artist *</label>
+                                            <input id="metaArtist" name="artist" type="text" data-track="true" required>
                                         </div>
-                                    </div>
-                                    <div class="input-group mt-2">
-                                        <label>Extra Details (Optional)</label>
-                                        <input type="text" id="aiDesc" placeholder="e.g. A futuristic city at night...">
-                                    </div>
-                                    <div class="input-group mt-2">
-                                        <div class="label-row flex-between">
-                                            <label>AI Prompt</label>
-                                            <button type="button" id="autoPromptBtn" class="btn-xs"><i data-lucide="wand-2"></i> Auto Fill</button>
+                                        <div class="input-group">
+                                            <label>Album Artist</label>
+                                            <input id="metaAlbumArtist" name="album_artist" type="text" data-track="true">
                                         </div>
-                                        <textarea id="aiPrompt" rows="3" placeholder="Describe the cover or click Auto Fill..."></textarea>
-                                    </div>
-                                    <button type="button" id="generateAiBtn" class="btn-secondary w-full mt-2">
-                                        <i data-lucide="sparkles"></i> Generate Covers
-                                    </button>
-                                    
-                                    <div id="aiLoading" class="ai-loading-state hidden mt-4">
-                                        <i data-lucide="loader-2" class="spin text-primary mb-2"></i>
-                                        <p id="aiLoadingText">Composing your artwork...</p>
-                                    </div>
-                                    
-                                    <div id="aiGallery" class="ai-gallery hidden mt-4">
-                                        <!-- Images injected via JS -->
+                                        <div class="input-group">
+                                            <label>Composer</label>
+                                            <input id="metaComposer" name="composer" type="text" data-track="true">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Track Number</label>
+                                            <input id="metaTrack" name="track" type="text" placeholder="e.g. 1/12" data-track="true">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Disc Number</label>
+                                            <input id="metaDisc" name="disc" type="text" placeholder="e.g. 1/1" data-track="true">
+                                        </div>
                                     </div>
                                 </div>
 
+                                <!-- Album Info -->
+                                <div id="tab-album" class="tab-panel hidden">
+                                    <div class="grid-2">
+                                        <div class="input-group">
+                                            <label>Album *</label>
+                                            <input id="metaAlbum" name="album" type="text" data-track="true" required>
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Genre *</label>
+                                            <input id="metaGenre" name="genre" type="text" data-track="true" required>
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Release Year *</label>
+                                            <input id="metaYear" name="year" type="number" data-track="true" required>
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Release Date</label>
+                                            <input id="metaDate" name="date" type="date" data-track="true">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Publisher/Label</label>
+                                            <input id="metaPublisher" name="publisher" type="text" data-track="true">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Copyright</label>
+                                            <input id="metaCopyright" name="copyright" type="text" data-track="true">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Advanced -->
+                                <div id="tab-advanced" class="tab-panel hidden">
+                                    <div class="grid-2">
+                                        <div class="input-group">
+                                            <label>ISRC</label>
+                                            <input id="metaISRC" name="isrc" type="text" data-track="true">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>BPM</label>
+                                            <input id="metaBPM" name="bpm" type="number" data-track="true">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Musical Key</label>
+                                            <input id="metaKey" name="key" type="text" data-track="true">
+                                        </div>
+                                        <div class="input-group">
+                                            <label>Language</label>
+                                            <input id="metaLanguage" name="language" type="text" data-track="true">
+                                        </div>
+                                    </div>
+                                    <div class="input-group mt-4">
+                                        <label>Lyrics</label>
+                                        <textarea id="metaLyrics" name="lyrics" rows="4" data-track="true"></textarea>
+                                    </div>
+                                    <div class="input-group">
+                                        <label>Comments</label>
+                                        <textarea id="metaComments" name="comments" rows="2" data-track="true"></textarea>
+                                    </div>
+                                </div>
+
+                                <!-- Artwork -->
+                                <div id="tab-artwork" class="tab-panel hidden">
+                                    <div class="artwork-manager">
+                                        <div class="artwork-preview-large">
+                                            <img id="mainArtworkPreview" src='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" fill="%23141414"><rect width="400" height="400" fill="%230B0B0B"/><path d="M200 130C161.4 130 130 161.4 130 200s31.4 70 70 70 70-31.4 70-70-31.4-70-70-70zm0 120c-27.6 0-50-22.4-50-50s22.4-50 50-50 50 22.4 50 50-22.4 50-50 50z" fill="%23181818"/></svg>'>
+                                        </div>
+                                        <div class="artwork-actions">
+                                            <label class="btn-secondary w-full text-center">
+                                                <input id="coverImage" name="cover_image" type="file" accept="image/jpeg,image/png" class="hidden-input">
+                                                <i data-lucide="upload"></i> Upload Artwork
+                                            </label>
+                                            <button type="button" class="btn-secondary w-full mt-2" onclick="app.switchView('view-studio')">
+                                                <i data-lucide="sparkles" class="text-primary"></i> AI Studio
+                                            </button>
+                                            <button type="button" class="btn-text text-danger w-full mt-4" id="btnRemoveArtwork">
+                                                <i data-lucide="trash-2"></i> Remove Artwork
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: File Info Panel -->
+                        <div class="editor-side">
+                            <div class="card info-card">
+                                <h3 class="section-title"><i data-lucide="info"></i> Audio Details</h3>
+                                <div class="info-list">
+                                    <div class="info-item"><span>Format</span><span id="infoFormat">--</span></div>
+                                    <div class="info-item"><span>Size</span><span id="infoSize">--</span></div>
+                                    <div class="info-item"><span>Duration</span><span id="infoDuration">--</span></div>
+                                </div>
+                                <hr class="divider">
+                                <h3 class="section-title"><i data-lucide="alert-circle"></i> Missing Data</h3>
+                                <ul class="missing-list text-danger" id="missingDataList">
+                                    <li>Upload a file first</li>
+                                </ul>
                             </div>
                         </div>
                     </div>
+                </form>
+            </section>
 
-                    <!-- Generate Metadata CTA -->
-                    <div class="form-actions mt-6">
-                        <button type="submit" class="btn-primary" id="generateMetadataBtn">
-                            <i data-lucide="check-circle"></i> Embed Metadata & Download
+            <!-- VIEW: LIBRARY -->
+            <section id="view-library" class="view hidden">
+                <div class="flex-between mb-6">
+                    <h1 class="view-title mb-0">My Library</h1>
+                    <div class="library-tools">
+                        <div class="search-box">
+                            <i data-lucide="search"></i>
+                            <input type="text" id="libSearch" placeholder="Search your music...">
+                        </div>
+                    </div>
+                </div>
+                <div class="library-grid" id="libraryGrid">
+                    <!-- Populated from IndexedDB -->
+                </div>
+            </section>
+
+            <!-- VIEW: AI STUDIO -->
+            <section id="view-studio" class="view hidden">
+                <h1 class="view-title">Artwork Studio</h1>
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="input-group">
+                            <label>Artwork Description</label>
+                            <textarea id="aiPrompt" rows="4" placeholder="Dark cinematic hip-hop album cover with neon city lights..."></textarea>
+                        </div>
+                        <div class="grid-2 mt-4">
+                            <div class="input-group">
+                                <label>Style</label>
+                                <select id="aiStyle">
+                                    <option value="">None</option>
+                                    <option value="Cinematic">Cinematic</option>
+                                    <option value="Cyberpunk">Cyberpunk</option>
+                                    <option value="Retro">Retro</option>
+                                    <option value="Minimal">Minimal</option>
+                                    <option value="Abstract">Abstract</option>
+                                    <option value="Anime">Anime</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Mood</label>
+                                <select id="aiMood">
+                                    <option value="">None</option>
+                                    <option value="Dark">Dark</option>
+                                    <option value="Energetic">Energetic</option>
+                                    <option value="Chill">Chill</option>
+                                    <option value="Mysterious">Mysterious</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="button" id="generateAiBtn" class="btn-primary w-full mt-4">
+                            <i data-lucide="sparkles"></i> Generate Variations
                         </button>
                     </div>
-                </form>
-            </div>
+                    
+                    <div class="card studio-gallery">
+                        <div id="aiLoading" class="hidden text-center mt-6">
+                            <i data-lucide="loader-2" class="spin text-primary lg-icon"></i>
+                            <p class="mt-2 text-muted">Composing masterpiece...</p>
+                        </div>
+                        <div id="aiGallery" class="ai-gallery hidden">
+                            <!-- Injected -->
+                        </div>
+                        <button type="button" id="btnApplyArtwork" class="btn-primary w-full mt-4 hidden">
+                            Apply to Track
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW: AUDIO ANALYZER (UI Shell) -->
+            <section id="view-analyzer" class="view hidden">
+                <h1 class="view-title">Audio Analyzer</h1>
+                <div class="card text-center empty-state">
+                    <i data-lucide="activity" class="lg-icon text-muted"></i>
+                    <h3 class="mt-4">Advanced Analysis Coming Soon</h3>
+                    <p class="text-muted">Waveform, BPM detection, and Loudness analysis will be available in a future update.</p>
+                </div>
+            </section>
+
+            <!-- VIEW: BATCH EDITOR (UI Shell) -->
+            <section id="view-batch" class="view hidden">
+                <h1 class="view-title">Batch Editor</h1>
+                <div class="card text-center empty-state">
+                    <i data-lucide="copy-check" class="lg-icon text-muted"></i>
+                    <h3 class="mt-4">Batch Editing Coming Soon</h3>
+                    <p class="text-muted">Process multiple files simultaneously in a future update.</p>
+                </div>
+            </section>
+
         </main>
+
+        <!-- STICKY AUDIO PLAYER -->
+        <footer class="audio-player">
+            <div class="player-info">
+                <img id="playerArt" src='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50"><rect width="50" height="50" fill="%23181818"/></svg>'>
+                <div class="player-meta">
+                    <div id="playerTitle" class="font-bold truncate">No Track Loaded</div>
+                    <div id="playerArtist" class="text-muted text-sm truncate">--</div>
+                </div>
+            </div>
+            <div class="player-controls">
+                <div class="control-buttons">
+                    <button class="btn-icon"><i data-lucide="skip-back"></i></button>
+                    <button class="btn-icon play-btn" id="playerPlayBtn"><i data-lucide="play"></i></button>
+                    <button class="btn-icon"><i data-lucide="skip-forward"></i></button>
+                </div>
+                <div class="progress-container">
+                    <span id="playerTime">0:00</span>
+                    <input type="range" id="playerSeek" value="0" max="100">
+                    <span id="playerDuration">0:00</span>
+                </div>
+            </div>
+            <div class="player-options">
+                <button class="btn-icon"><i data-lucide="volume-2"></i></button>
+                <input type="range" id="playerVolume" value="100" max="100" class="vol-slider">
+            </div>
+            <audio id="realAudio" class="hidden"></audio>
+        </footer>
+    </div>
+
+    <!-- MODALS -->
+
+    <!-- Smart Suggestion Modal -->
+    <div id="suggestModal" class="modal hidden">
+        <div class="modal-card">
+            <h2>Suggested Changes</h2>
+            <p class="text-muted mb-4">We parsed your filename. Would you like to apply these updates?</p>
+            <div class="diff-view mb-4" id="suggestDiff">
+                <!-- Injected -->
+            </div>
+            <div class="flex-end gap-2">
+                <button class="btn-text" onclick="app.closeModal('suggestModal')">Ignore</button>
+                <button class="btn-primary" id="btnAcceptSuggest">Accept</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Before/After Modal -->
+    <div id="compareModal" class="modal hidden">
+        <div class="modal-card modal-lg">
+            <h2>Confirm Changes</h2>
+            <p class="text-muted mb-4">Review your metadata changes before exporting.</p>
+            <div class="comparison-grid">
+                <div class="compare-col">
+                    <h4>Before</h4>
+                    <div id="compareBefore" class="compare-list text-muted"></div>
+                </div>
+                <div class="compare-col">
+                    <h4>After</h4>
+                    <div id="compareAfter" class="compare-list"></div>
+                </div>
+            </div>
+            <div class="export-settings mt-6 card bg-base">
+                <h4>Export Settings</h4>
+                <label class="checkbox-label mt-2"><input type="checkbox" checked disabled> Preserve original audio quality</label>
+                <label class="checkbox-label"><input type="checkbox" checked id="exportCleanName"> Clean filename</label>
+            </div>
+            <div class="flex-end gap-2 mt-6">
+                <button class="btn-text" onclick="app.closeModal('compareModal')">Cancel</button>
+                <button class="btn-primary" id="btnConfirmExport"><i data-lucide="check-circle"></i> Save Updated Audio</button>
+            </div>
+        </div>
     </div>
 
     <!-- Progress Modal -->
@@ -202,10 +442,9 @@
             <h2 class="mb-4">Processing Track</h2>
             <div class="progress-steps">
                 <div class="step-item" id="step1"><i data-lucide="circle"></i> <span>Uploading Audio</span></div>
-                <div class="step-item" id="step2"><i data-lucide="circle"></i> <span>Reading Audio Data</span></div>
-                <div class="step-item" id="step3"><i data-lucide="circle"></i> <span>Generating Metadata</span></div>
-                <div class="step-item" id="step4"><i data-lucide="circle"></i> <span>Embedding Artwork</span></div>
-                <div class="step-item" id="step5"><i data-lucide="circle"></i> <span>Finalizing File</span></div>
+                <div class="step-item" id="step2"><i data-lucide="circle"></i> <span>Generating Metadata</span></div>
+                <div class="step-item" id="step3"><i data-lucide="circle"></i> <span>Embedding Artwork</span></div>
+                <div class="step-item" id="step4"><i data-lucide="circle"></i> <span>Downloading File</span></div>
             </div>
             <div class="progress-wrap mt-4">
                 <div class="progress-bar" id="progressBar"></div>
@@ -217,28 +456,23 @@
     <div id="successModal" class="modal hidden">
         <div class="modal-card text-center success-card">
             <div class="success-icon"><i data-lucide="check-circle-2"></i></div>
-            <h2 class="mt-2">Your Track is Ready!</h2>
-            <p class="text-muted mb-4">Metadata and artwork successfully embedded.</p>
+            <h2 class="mt-2">Track Processed!</h2>
+            <p class="text-muted mb-4">Saved to your library and ready for download.</p>
             <div class="success-cover-wrap">
-                <img id="successCoverPreview" src="" alt="Final Cover">
+                <img id="successCoverPreview" src="">
             </div>
-            <div class="success-details mt-4 mb-6">
-                <h3 id="successTitle" class="font-bold"></h3>
-                <p id="successArtist" class="text-muted"></p>
-            </div>
-            <a href="#" class="btn-primary w-full" id="downloadBtn" style="text-decoration: none;">
-                <i data-lucide="download"></i> Download Tagged Audio
+            <h3 id="successTitle" class="font-bold mt-4"></h3>
+            <p id="successArtist" class="text-muted mb-6"></p>
+            <a href="#" class="btn-primary w-full" id="downloadBtn" style="text-decoration: none;" download>
+                <i data-lucide="download"></i> Download Audio
             </a>
-            <button type="button" class="btn-text w-full mt-2" id="processAnotherBtn">
-                Process Another Track
+            <button type="button" class="btn-text w-full mt-2" onclick="app.closeModal('successModal'); app.switchView('view-library')">
+                View in Library
             </button>
         </div>
     </div>
 
-    <script src="{{ url_for('static', path='/script.js') }}?v=5"></script>
-    <script>
-        // Initialize icons
-        lucide.createIcons();
-    </script>
+    <script src="{{ url_for('static', path='/script.js') }}?v=7"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>

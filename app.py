@@ -1,5 +1,6 @@
 import re
 import os
+import time
 import urllib.request
 import urllib.parse
 import random
@@ -7,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from pydantic import BaseModel
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,6 +24,9 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png"}
 MAX_AUDIO_SIZE = 50 * 1024 * 1024
 MAX_COVER_SIZE = 10 * 1024 * 1024
 CHUNK_SIZE = 1024 * 1024
+# How long a processed file stays available for download before it is swept.
+OUTPUT_TTL_SECONDS = 60 * 60
+JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -68,7 +72,6 @@ def proxy_image(url: str):
 
 @app.post("/generate")
 async def generate_metadata(
-    background_tasks: BackgroundTasks,
     audio_file: UploadFile = File(...),
     cover_image: UploadFile = File(...),
     title: str = Form(...),
@@ -89,6 +92,9 @@ async def generate_metadata(
 
     if cover_image.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Album cover must be a JPG or PNG image.")
+
+    # Remove stale processed files so the outputs folder does not grow unbounded.
+    sweep_outputs()
 
     job_id = uuid4().hex
     input_path = UPLOAD_DIR / f"{job_id}{audio_suffix}"
@@ -120,14 +126,31 @@ async def generate_metadata(
         raise HTTPException(status_code=400, detail=f"Could not write metadata: {exc}") from exc
 
     input_path.unlink(missing_ok=True)
-    background_tasks.add_task(delete_file, output_path)
 
+    # Return a handle instead of the bytes. The browser downloads the file from
+    # /download/{job_id}, which streams it with Content-Disposition: attachment.
+    # A direct server download works on every browser (including iOS Safari) and
+    # avoids the blob-URL downloads that silently fail on many mobile browsers.
+    return {
+        "job_id": job_id,
+        "filename": download_name,
+        "size": output_path.stat().st_size,
+        "download_url": f"/download/{job_id}",
+    }
+
+
+@app.get("/download/{job_id}")
+def download_file(job_id: str):
+    output_path = resolve_output(job_id)
+    if output_path is None:
+        raise HTTPException(status_code=404, detail="File not found or has expired. Please process it again.")
+    download_name = output_path.name.split("_", 1)[1] if "_" in output_path.name else output_path.name
     return FileResponse(
         path=output_path,
         filename=download_name,
         media_type="application/octet-stream",
-        background=background_tasks,
     )
+
 
 
 async def save_upload(upload: UploadFile, destination: Path, max_bytes: int, label: str) -> int:
@@ -168,8 +191,6 @@ def detect_image_mime(data: bytes) -> str | None:
 
 def clean_text(value: str, label: str) -> str:
     cleaned = value.strip()
-    if not cleaned:
-        raise HTTPException(status_code=400, detail=f"{label} is required.")
     if len(cleaned) > 200:
         raise HTTPException(status_code=400, detail=f"{label} must be 200 characters or fewer.")
     return cleaned
@@ -177,7 +198,7 @@ def clean_text(value: str, label: str) -> str:
 
 def clean_year_value(value: str) -> str:
     cleaned = value.strip()
-    if not re.fullmatch(r"\d{1,4}", cleaned):
+    if cleaned and not re.fullmatch(r"\d{1,4}", cleaned):
         raise HTTPException(status_code=400, detail="Year must be a 1 to 4 digit number.")
     return cleaned
 
@@ -189,6 +210,34 @@ def safe_filename_stem(filename: str) -> str:
 
 def delete_file(path: Path) -> None:
     path.unlink(missing_ok=True)
+
+
+def sweep_outputs(ttl_seconds: int = OUTPUT_TTL_SECONDS) -> None:
+    """Delete processed files older than the TTL so outputs don't accumulate.
+
+    Only files that follow the job-output naming scheme ({job_id}_name) are
+    considered, so placeholders like .gitkeep are never removed.
+    """
+    now = time.time()
+    for path in OUTPUT_DIR.glob("*_*"):
+        if not JOB_ID_RE.match(path.name.split("_", 1)[0]):
+            continue
+        try:
+            if path.is_file() and now - path.stat().st_mtime > ttl_seconds:
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def resolve_output(job_id: str) -> Path | None:
+    """Return the processed file for a job id, guarding against path traversal."""
+    if not JOB_ID_RE.match(job_id):
+        return None
+    matches = sorted(OUTPUT_DIR.glob(f"{job_id}_*"))
+    for path in matches:
+        if path.is_file():
+            return path
+    return None
 
 
 def write_mp3_tags(
@@ -219,11 +268,16 @@ def write_mp3_tags(
     audio.tags.delall("TDRC")
     audio.tags.delall("APIC")
 
-    audio.tags.add(TIT2(encoding=3, text=title))
-    audio.tags.add(TPE1(encoding=3, text=artist))
-    audio.tags.add(TALB(encoding=3, text=album))
-    audio.tags.add(TCON(encoding=3, text=genre))
-    audio.tags.add(TDRC(encoding=3, text=year))
+    if title:
+        audio.tags.add(TIT2(encoding=3, text=title))
+    if artist:
+        audio.tags.add(TPE1(encoding=3, text=artist))
+    if album:
+        audio.tags.add(TALB(encoding=3, text=album))
+    if genre:
+        audio.tags.add(TCON(encoding=3, text=genre))
+    if year:
+        audio.tags.add(TDRC(encoding=3, text=year))
     audio.tags.add(
         APIC(
             encoding=3,
@@ -251,10 +305,15 @@ def write_m4a_tags(
         audio.add_tags()
 
     image_format = MP4Cover.FORMAT_JPEG if cover_mime == "image/jpeg" else MP4Cover.FORMAT_PNG
-    audio.tags["\xa9nam"] = [title]
-    audio.tags["\xa9ART"] = [artist]
-    audio.tags["\xa9alb"] = [album]
-    audio.tags["\xa9gen"] = [genre]
-    audio.tags["\xa9day"] = [year]
+    if title:
+        audio.tags["\xa9nam"] = [title]
+    if artist:
+        audio.tags["\xa9ART"] = [artist]
+    if album:
+        audio.tags["\xa9alb"] = [album]
+    if genre:
+        audio.tags["\xa9gen"] = [genre]
+    if year:
+        audio.tags["\xa9day"] = [year]
     audio.tags["covr"] = [MP4Cover(cover_data, imageformat=image_format)]
     audio.save()

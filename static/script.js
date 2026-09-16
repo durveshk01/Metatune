@@ -453,7 +453,7 @@ const app = {
     submitForm() {
         const form = document.getElementById('metadataForm');
         const fd = new FormData();
-        
+
         // Essential fields for backend
         fd.set("audio_file", this.state.audioFile);
         fd.set("title", document.getElementById('metaTitle').value);
@@ -478,61 +478,76 @@ const app = {
 
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/generate");
-        xhr.responseType = "blob";
+        // The server now returns a small JSON handle; the file is downloaded
+        // separately from /download/{job_id} so it works on every browser.
+        xhr.responseType = "json";
 
         xhr.upload.addEventListener("progress", (e) => {
             if (e.lengthComputable) {
-                const pct = Math.min(50, Math.round((e.loaded / e.total) * 50));
+                const pct = Math.min(55, Math.round((e.loaded / e.total) * 55));
                 document.getElementById('progressBar').style.width = pct + '%';
-                if (pct >= 50 && !document.getElementById('step1').classList.contains('completed')) {
+                if (pct >= 55 && !document.getElementById('step1').classList.contains('completed')) {
                     this.completeStep('step1');
                     this.updateIcon(document.getElementById('step2'), 'loader-2', true);
-                    this.completeStep('step2');
-                    this.updateIcon(document.getElementById('step3'), 'loader-2', true);
                 }
             }
         });
 
-        xhr.addEventListener("progress", (e) => {
-            if (!document.getElementById('step3').classList.contains('completed')) {
-                this.completeStep('step3');
-                this.updateIcon(document.getElementById('step4'), 'loader-2', true);
-            }
-            if (e.lengthComputable) {
-                document.getElementById('progressBar').style.width = (50 + Math.min(45, Math.round((e.loaded / e.total) * 45))) + '%';
-            } else {
-                document.getElementById('progressBar').style.width = '85%';
-            }
-        });
+        xhr.onerror = () => {
+            this.closeModal('progressModal');
+            alert("Network error. Please check your connection and try again.");
+        };
 
         xhr.onload = async () => {
             if (xhr.status >= 200 && xhr.status < 300) {
+                const data = xhr.response || {};
+                const filename = data.filename || "tagged_audio.mp3";
+                const downloadUrl = data.download_url || ("/download/" + data.job_id);
+
+                // Server finished tagging + embedding artwork.
+                this.completeStep('step1');
+                this.completeStep('step2');
+                this.updateIcon(document.getElementById('step3'), 'loader-2', true);
+                document.getElementById('progressBar').style.width = '70%';
+
+                // Best effort: keep an offline copy of the finished file in the
+                // library. The download itself never depends on this succeeding.
+                let blob = null;
+                try {
+                    const dlRes = await fetch(downloadUrl);
+                    if (dlRes.ok) blob = await dlRes.blob();
+                } catch (err) {
+                    console.warn("Library copy failed", err);
+                }
+
+                this.completeStep('step3');
+                this.updateIcon(document.getElementById('step4'), 'loader-2', true);
                 document.getElementById('progressBar').style.width = '100%';
-                this.completeStep('step4');
-                
-                const disp = xhr.getResponseHeader("Content-Disposition");
-                const match = disp ? disp.match(/filename="?([^"]+)"?/) : null;
-                const filename = match ? match[1] : "tagged_audio.mp3";
-                
-                // Store in DB
+
                 await this.saveToLibrary({
                     title: fd.get('title'),
                     artist: fd.get('artist'),
                     album: fd.get('album'),
                     duration: document.getElementById('infoDuration').textContent,
-                    blob: xhr.response,
+                    blob: blob,
                     filename: filename,
+                    downloadUrl: downloadUrl,
                     artSrc: document.getElementById('mainArtworkPreview').src,
                     date: new Date().toISOString()
                 });
+                this.completeStep('step4');
 
                 setTimeout(() => {
                     this.closeModal('progressModal');
-                    this.showSuccess(xhr.response, filename);
-                }, 100);
+                    this.showSuccess(downloadUrl, blob, filename);
+                }, 150);
             } else {
                 this.closeModal('progressModal');
-                alert("Failed to generate.");
+                let msg = "Failed to process the track. Please try again.";
+                try {
+                    if (xhr.response && xhr.response.detail) msg = xhr.response.detail;
+                } catch (err) { /* keep default message */ }
+                alert(msg);
             }
         };
         xhr.send(fd);
@@ -557,17 +572,23 @@ const app = {
         lucide.createIcons();
     },
 
-    showSuccess(blob, filename) {
+    showSuccess(downloadUrl, blob, filename) {
         this.openModal('successModal');
         document.getElementById('successTitle').textContent = document.getElementById('metaTitle').value;
         document.getElementById('successArtist').textContent = document.getElementById('metaArtist').value;
         document.getElementById('successCoverPreview').src = document.getElementById('mainArtworkPreview').src;
-        
-        const dlUrl = window.URL.createObjectURL(blob);
+
         const a = document.getElementById('downloadBtn');
-        a.href = dlUrl;
-        a.download = filename;
-        
+        // Prefer the direct server URL: it responds with Content-Disposition:
+        // attachment, so the browser downloads it reliably everywhere (including
+        // iOS Safari). Fall back to a blob URL only if no URL is available.
+        if (downloadUrl) {
+            a.href = downloadUrl;
+        } else if (blob) {
+            a.href = window.URL.createObjectURL(blob);
+        }
+        a.setAttribute('download', filename);
+
         // reset steps
         document.querySelectorAll('.step-item').forEach(el => {
             el.classList.remove('active', 'completed');
@@ -629,11 +650,20 @@ const app = {
                 <div class="lib-artist">${item.artist}</div>
                 <div class="text-muted mt-2 flex-between" style="font-size:0.75rem">
                     <span>${item.duration}</span>
-                    <a href="${URL.createObjectURL(item.blob)}" download="${item.filename}" class="btn-text" style="color:var(--primary)"><i data-lucide="download" style="width:14px;height:14px"></i></a>
+                    <a href="${this.libraryHref(item)}" download="${item.filename}" class="btn-text" style="color:var(--primary)"><i data-lucide="download" style="width:14px;height:14px"></i></a>
                 </div>
             </div>
         `).join('');
         lucide.createIcons();
+    },
+
+    // Build a usable download href for a saved library item. Prefer the stored
+    // offline blob; fall back to the server URL if the blob was not captured.
+    libraryHref(item) {
+        if (item.blob) {
+            try { return URL.createObjectURL(item.blob); } catch (e) { /* fall through */ }
+        }
+        return item.downloadUrl || '#';
     },
 
     async loadDashboard() {
@@ -644,7 +674,7 @@ const app = {
         const aiArtworks = items.filter(i => i.artSrc.includes('pollinations')).length;
         document.getElementById('statArtworks').textContent = aiArtworks;
 
-        let totalSize = items.reduce((acc, val) => acc + val.blob.size, 0);
+        let totalSize = items.reduce((acc, val) => acc + (val.blob ? val.blob.size : 0), 0);
         document.getElementById('statStorage').textContent = (totalSize / (1024*1024)).toFixed(1) + ' MB';
 
         const recList = document.getElementById('dashboardRecentList');
@@ -658,7 +688,7 @@ const app = {
                             <div class="text-muted" style="font-size:0.8rem">${item.artist} • ${new Date(item.date).toLocaleDateString()}</div>
                         </div>
                     </div>
-                    <a href="${URL.createObjectURL(item.blob)}" download="${item.filename}" class="btn-icon" title="Download"><i data-lucide="download"></i></a>
+                    <a href="${this.libraryHref(item)}" download="${item.filename}" class="btn-icon" title="Download"><i data-lucide="download"></i></a>
                 </div>
             `).join('');
             lucide.createIcons();

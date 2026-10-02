@@ -1,6 +1,6 @@
 # Audio Metadata Generator Deployment
 
-This project is a simple FastAPI app for adding metadata and album artwork to MP3 and M4A files. It uses Mutagen only. There is no database, authentication, Redis, Docker, OpenAI, Whisper, Supabase, Celery, or external metadata service.
+This project is a FastAPI app for adding metadata and album artwork to MP3 and M4A files. It uses Mutagen for tagging. There is no server-side database, authentication, Redis, Docker, OpenAI, Whisper, Supabase, or Celery. The browser stores the user's library locally in IndexedDB. AI artwork generation uses the external Pollinations image service.
 
 ## Project Structure
 
@@ -34,6 +34,12 @@ Open:
 
 ```text
 http://127.0.0.1:8000
+```
+
+Run the focused backend regression checks with:
+
+```bash
+python -m unittest discover -s tests -v
 ```
 
 ## GitHub Setup
@@ -98,7 +104,7 @@ The included `render.yaml` also defines the same Render settings and a `/health`
 - Cover images are limited to 10 MB.
 - Audio formats are limited to `.mp3` and `.m4a`.
 - Cover images are limited to valid JPEG and PNG files.
-- Uploaded and generated files are temporary and cleaned up after processing/download.
+- Uploaded source files are removed after processing. Generated downloads expire after one hour and are removed on the next generation request or when an expired download is requested.
 
 ## Required Environment Variables
 
@@ -111,4 +117,5 @@ Render provides `PORT` automatically.
 - Free services may sleep after inactivity.
 - The first request after sleeping can be slower.
 - Render disk is ephemeral, so this app intentionally treats uploads and outputs as temporary files.
+- Generated downloads are stored on the running service instance; this setup is intended for a single instance without persistent storage.
 - Very large uploads are rejected to keep memory and disk usage reasonable.

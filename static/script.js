@@ -8,10 +8,9 @@ const app = {
     state: {
         audioFile: null,
         audioBlobUrl: null,
-        coverFile: null, // manual
         aiCoverBlob: null, // ai generated
         history: { past: [], future: [] },
-        isSaving: false
+        objectUrls: []
     },
     
     init() {
@@ -23,7 +22,9 @@ const app = {
         this.setupUndoRedo();
         this.setupAI();
         this.setupExport();
-        this.initDB().then(() => this.loadDashboard());
+        this.initDB().then(() => this.loadDashboard()).catch((error) => {
+            console.warn('Local library is unavailable in this browser.', error);
+        });
         
         // Refresh icons
         lucide.createIcons();
@@ -216,26 +217,9 @@ const app = {
         }
 
         const diffEl = document.getElementById('suggestDiff');
-        diffEl.innerHTML = `
-            <div class="compare-item">
-                <span class="compare-label">Song Title</span>
-                <div class="flex-between">
-                    <span class="text-danger"><del>${document.getElementById('metaTitle').value}</del></span>
-                    <i data-lucide="arrow-right" class="text-muted" style="width:14px"></i>
-                    <span class="text-primary">${title}</span>
-                </div>
-            </div>
-            ${artist ? `
-            <div class="compare-item mt-2">
-                <span class="compare-label">Artist</span>
-                <div class="flex-between">
-                    <span class="text-danger"><del>${document.getElementById('metaArtist').value || 'None'}</del></span>
-                    <i data-lucide="arrow-right" class="text-muted" style="width:14px"></i>
-                    <span class="text-primary">${artist}</span>
-                </div>
-            </div>` : ''}
-        `;
-        lucide.createIcons();
+        diffEl.replaceChildren();
+        this.appendSuggestion(diffEl, 'Song Title', document.getElementById('metaTitle').value, title);
+        if (artist) this.appendSuggestion(diffEl, 'Artist', document.getElementById('metaArtist').value || 'None', artist);
         this.openModal('suggestModal');
 
         document.getElementById('btnAcceptSuggest').onclick = () => {
@@ -246,6 +230,28 @@ const app = {
             this.updatePlayerMeta();
             this.closeModal('suggestModal');
         };
+    },
+
+    appendSuggestion(container, label, current, suggested) {
+        const row = document.createElement('div');
+        row.className = 'compare-item mt-2';
+        const heading = document.createElement('span');
+        heading.className = 'compare-label';
+        heading.textContent = label;
+        const values = document.createElement('div');
+        values.className = 'flex-between';
+        const oldValue = document.createElement('del');
+        oldValue.className = 'text-danger';
+        oldValue.textContent = current || 'None';
+        const arrow = document.createElement('span');
+        arrow.className = 'text-muted';
+        arrow.textContent = '→';
+        const newValue = document.createElement('span');
+        newValue.className = 'text-primary';
+        newValue.textContent = suggested;
+        values.append(oldValue, arrow, newValue);
+        row.append(heading, values);
+        container.append(row);
     },
 
     // --- UNDO / REDO ---
@@ -303,7 +309,7 @@ const app = {
     },
 
     updateUndoRedoUI() {
-        document.getElementById('btnUndo').disabled = this.state.history.past.length <= 0;
+        document.getElementById('btnUndo').disabled = this.state.history.past.length <= 1;
         document.getElementById('btnRedo').disabled = this.state.history.future.length === 0;
     },
 
@@ -382,7 +388,11 @@ const app = {
                 data.images.forEach(url => {
                     const card = document.createElement('div');
                     card.className = 'ai-image-card';
-                    card.innerHTML = `<img src="${url}" crossorigin="anonymous">`;
+                    const image = document.createElement('img');
+                    image.src = url;
+                    image.crossOrigin = 'anonymous';
+                    image.alt = 'Generated artwork variation';
+                    card.append(image);
                     card.onclick = () => {
                         gallery.querySelectorAll('.ai-image-card').forEach(c => c.classList.remove('selected'));
                         card.classList.add('selected');
@@ -428,19 +438,17 @@ const app = {
             const fields = ['Title', 'Artist', 'Album', 'Genre', 'Year'];
             const ids = ['metaTitle', 'metaArtist', 'metaAlbum', 'metaGenre', 'metaYear'];
             
-            let bHtml = ''; let aHtml = '';
+            const before = document.getElementById('compareBefore');
+            const after = document.getElementById('compareAfter');
+            before.replaceChildren();
+            after.replaceChildren();
             ids.forEach((id, i) => {
                 const val = document.getElementById(id).value || '--';
-                // we mock 'before' as empty for now or original filename for title
                 let old = '--';
                 if(id === 'metaTitle') old = this.state.audioFile.name;
-                
-                bHtml += `<div class="compare-item"><span class="compare-label">${fields[i]}</span><span>${old}</span></div>`;
-                aHtml += `<div class="compare-item"><span class="compare-label">${fields[i]}</span><span class="text-primary">${val}</span></div>`;
+                before.append(this.createCompareItem(fields[i], old));
+                after.append(this.createCompareItem(fields[i], val, 'text-primary'));
             });
-            document.getElementById('compareBefore').innerHTML = bHtml;
-            document.getElementById('compareAfter').innerHTML = aHtml;
-            
             this.openModal('compareModal');
         });
 
@@ -448,6 +456,19 @@ const app = {
             this.closeModal('compareModal');
             this.submitForm();
         });
+    },
+
+    createCompareItem(label, value, valueClass = '') {
+        const row = document.createElement('div');
+        row.className = 'compare-item';
+        const name = document.createElement('span');
+        name.className = 'compare-label';
+        name.textContent = label;
+        const text = document.createElement('span');
+        text.className = valueClass;
+        text.textContent = value;
+        row.append(name, text);
+        return row;
     },
 
     submitForm() {
@@ -481,6 +502,7 @@ const app = {
         // The server now returns a small JSON handle; the file is downloaded
         // separately from /download/{job_id} so it works on every browser.
         xhr.responseType = "json";
+        xhr.timeout = 180000;
 
         xhr.upload.addEventListener("progress", (e) => {
             if (e.lengthComputable) {
@@ -497,12 +519,22 @@ const app = {
             this.closeModal('progressModal');
             alert("Network error. Please check your connection and try again.");
         };
+        xhr.ontimeout = () => {
+            this.closeModal('progressModal');
+            alert("Processing took too long. Please try again with a smaller audio file.");
+        };
+        xhr.onabort = () => this.closeModal('progressModal');
 
         xhr.onload = async () => {
             if (xhr.status >= 200 && xhr.status < 300) {
                 const data = xhr.response || {};
                 const filename = data.filename || "tagged_audio.mp3";
-                const downloadUrl = data.download_url || ("/download/" + data.job_id);
+                const downloadUrl = data.download_url || (data.job_id ? "/download/" + data.job_id : null);
+                if (!downloadUrl) {
+                    this.closeModal('progressModal');
+                    alert("The server finished processing but returned no download link. Please try again.");
+                    return;
+                }
 
                 // Server finished tagging + embedding artwork.
                 this.completeStep('step1');
@@ -616,10 +648,15 @@ const app = {
     saveToLibrary(item) {
         return new Promise((resolve) => {
             if(!this.db) return resolve();
-            const tx = this.db.transaction('library', 'readwrite');
-            const store = tx.objectStore('library');
-            store.add(item);
-            tx.oncomplete = () => resolve();
+            try {
+                const tx = this.db.transaction('library', 'readwrite');
+                tx.objectStore('library').add(item);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = tx.onabort = () => resolve(false);
+            } catch (error) {
+                console.warn('Could not save the track to the local library.', error);
+                resolve(false);
+            }
         });
     },
 
@@ -630,12 +667,14 @@ const app = {
             const store = tx.objectStore('library');
             const req = store.getAll();
             req.onsuccess = () => resolve(req.result.reverse()); // newest first
+            req.onerror = () => resolve([]);
         });
     },
 
     async loadLibrary() {
         const items = await this.getLibrary();
         const grid = document.getElementById('libraryGrid');
+        this.revokeLibraryObjectUrls();
         
         if (items.length === 0) {
             grid.innerHTML = '<div class="empty-state w-full text-center" style="grid-column: 1/-1"><i data-lucide="music-4" class="lg-icon"></i><h3 class="mt-4">Library Empty</h3></div>';
@@ -643,31 +682,68 @@ const app = {
             return;
         }
 
-        grid.innerHTML = items.map(item => `
-            <div class="lib-card">
-                <img src="${item.artSrc}" class="lib-art">
-                <div class="lib-title">${item.title}</div>
-                <div class="lib-artist">${item.artist}</div>
-                <div class="text-muted mt-2 flex-between" style="font-size:0.75rem">
-                    <span>${item.duration}</span>
-                    <a href="${this.libraryHref(item)}" download="${item.filename}" class="btn-text" style="color:var(--primary)"><i data-lucide="download" style="width:14px;height:14px"></i></a>
-                </div>
-            </div>
-        `).join('');
+        grid.replaceChildren(...items.map(item => this.createLibraryCard(item)));
         lucide.createIcons();
+    },
+
+    revokeLibraryObjectUrls() {
+        this.state.objectUrls.forEach(url => URL.revokeObjectURL(url));
+        this.state.objectUrls = [];
+    },
+
+    createLibraryCard(item) {
+        const card = document.createElement('article');
+        card.className = 'lib-card';
+        const image = document.createElement('img');
+        image.src = item.artSrc || DEFAULT_COVER;
+        image.alt = `${item.title || 'Untitled track'} artwork`;
+        image.className = 'lib-art';
+        const title = document.createElement('div');
+        title.className = 'lib-title';
+        title.textContent = item.title || 'Untitled track';
+        const artist = document.createElement('div');
+        artist.className = 'lib-artist';
+        artist.textContent = item.artist || 'Unknown artist';
+        const details = document.createElement('div');
+        details.className = 'text-muted mt-2 flex-between';
+        details.style.fontSize = '0.75rem';
+        const duration = document.createElement('span');
+        duration.textContent = item.duration || '--:--';
+        const link = this.createDownloadLink(item, 'btn-text');
+        link.style.color = 'var(--primary)';
+        details.append(duration, link);
+        card.append(image, title, artist, details);
+        return card;
+    },
+
+    createDownloadLink(item, className) {
+        const link = document.createElement('a');
+        link.href = this.libraryHref(item);
+        link.setAttribute('download', item.filename || 'audio.mp3');
+        link.className = className;
+        link.title = 'Download';
+        const icon = document.createElement('i');
+        icon.setAttribute('data-lucide', 'download');
+        link.append(icon);
+        return link;
     },
 
     // Build a usable download href for a saved library item. Prefer the stored
     // offline blob; fall back to the server URL if the blob was not captured.
     libraryHref(item) {
         if (item.blob) {
-            try { return URL.createObjectURL(item.blob); } catch (e) { /* fall through */ }
+            try {
+                const url = URL.createObjectURL(item.blob);
+                this.state.objectUrls.push(url);
+                return url;
+            } catch (e) { /* fall through */ }
         }
         return item.downloadUrl || '#';
     },
 
     async loadDashboard() {
         const items = await this.getLibrary();
+        this.revokeLibraryObjectUrls();
         document.getElementById('statTracks').textContent = items.length;
         
         // Just mock some AI art stat logic
@@ -678,21 +754,30 @@ const app = {
         document.getElementById('statStorage').textContent = (totalSize / (1024*1024)).toFixed(1) + ' MB';
 
         const recList = document.getElementById('dashboardRecentList');
-        if (items.length > 0) {
-            recList.innerHTML = items.slice(0, 5).map(item => `
-                <div class="recent-item">
-                    <div class="ri-info">
-                        <img src="${item.artSrc}">
-                        <div>
-                            <div class="font-bold">${item.title}</div>
-                            <div class="text-muted" style="font-size:0.8rem">${item.artist} • ${new Date(item.date).toLocaleDateString()}</div>
-                        </div>
-                    </div>
-                    <a href="${this.libraryHref(item)}" download="${item.filename}" class="btn-icon" title="Download"><i data-lucide="download"></i></a>
-                </div>
-            `).join('');
-            lucide.createIcons();
-        }
+        if (items.length === 0) return;
+        recList.replaceChildren(...items.slice(0, 5).map(item => {
+            const row = document.createElement('div');
+            row.className = 'recent-item';
+            const info = document.createElement('div');
+            info.className = 'ri-info';
+            const image = document.createElement('img');
+            image.src = item.artSrc || DEFAULT_COVER;
+            image.alt = `${item.title || 'Untitled track'} artwork`;
+            const text = document.createElement('div');
+            const title = document.createElement('div');
+            title.className = 'font-bold';
+            title.textContent = item.title || 'Untitled track';
+            const artist = document.createElement('div');
+            artist.className = 'text-muted';
+            artist.style.fontSize = '0.8rem';
+            const date = new Date(item.date);
+            artist.textContent = `${item.artist || 'Unknown artist'} • ${Number.isNaN(date.valueOf()) ? '' : date.toLocaleDateString()}`;
+            text.append(title, artist);
+            info.append(image, text);
+            row.append(info, this.createDownloadLink(item, 'btn-icon'));
+            return row;
+        }));
+        lucide.createIcons();
     }
 };
 

@@ -1,18 +1,21 @@
 import re
-import os
 import time
+import shutil
+import urllib.error
 import urllib.request
 import urllib.parse
 import random
 from pathlib import Path
 from uuid import uuid4
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Response
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, ID3NoHeaderError
+from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover
 
@@ -23,6 +26,7 @@ ALLOWED_AUDIO_TYPES = {".mp3", ".m4a"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png"}
 MAX_AUDIO_SIZE = 50 * 1024 * 1024
 MAX_COVER_SIZE = 10 * 1024 * 1024
+MAX_PROMPT_LENGTH = 1000
 CHUNK_SIZE = 1024 * 1024
 # How long a processed file stays available for download before it is swept.
 OUTPUT_TTL_SECONDS = 60 * 60
@@ -40,7 +44,11 @@ class GenerateRequest(BaseModel):
 
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"request": request},
+    )
 
 @app.get("/health")
 async def health():
@@ -48,9 +56,12 @@ async def health():
 
 @app.post("/api/generate-cover")
 async def generate_cover(req: GenerateRequest):
-    if not req.prompt:
+    prompt = req.prompt.strip()
+    if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
-    safe_prompt = urllib.parse.quote(req.prompt)
+    if len(prompt) > MAX_PROMPT_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Prompt must be {MAX_PROMPT_LENGTH} characters or fewer.")
+    safe_prompt = urllib.parse.quote(prompt)
     images = []
     # Generate 4 variations using different seeds
     for _ in range(4):
@@ -60,15 +71,41 @@ async def generate_cover(req: GenerateRequest):
 
 @app.get("/api/proxy-image")
 def proxy_image(url: str):
-    if not url.startswith("https://image.pollinations.ai/"):
+    if len(url) > 4096:
         raise HTTPException(status_code=400, detail="Invalid URL")
+    parsed_url = urlparse(url)
+    if (parsed_url.scheme != "https" or parsed_url.hostname != "image.pollinations.ai"
+            or parsed_url.port not in (None, 443) or parsed_url.username or parsed_url.password):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+    class SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, file, code, message, headers, new_url):
+            target = urlparse(new_url)
+            if (target.scheme != "https" or target.hostname != "image.pollinations.ai"
+                    or target.port not in (None, 443) or target.username or target.password):
+                return None
+            return super().redirect_request(request, file, code, message, headers, new_url)
+
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
-            img_data = response.read()
-        return Response(content=img_data, media_type="image/jpeg")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch image: {e}")
+        image_request = urllib.request.Request(url, headers={"User-Agent": "Metatune/1.0"})
+        opener = urllib.request.build_opener(SameHostRedirectHandler())
+        with opener.open(image_request, timeout=15) as response:
+            if response.status != 200:
+                raise HTTPException(status_code=502, detail="Image provider returned an error.")
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > MAX_COVER_SIZE:
+                raise HTTPException(status_code=413, detail="Generated artwork is too large.")
+            img_data = response.read(MAX_COVER_SIZE + 1)
+        if len(img_data) > MAX_COVER_SIZE:
+            raise HTTPException(status_code=413, detail="Generated artwork is too large.")
+        image_mime = detect_image_mime(img_data)
+        if image_mime is None:
+            raise HTTPException(status_code=502, detail="Image provider returned an invalid image.")
+        return Response(content=img_data, media_type=image_mime, headers={"X-Content-Type-Options": "nosniff"})
+    except HTTPException:
+        raise
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+        raise HTTPException(status_code=502, detail="Could not fetch generated artwork.") from exc
 
 @app.post("/generate")
 async def generate_metadata(
@@ -112,12 +149,10 @@ async def generate_metadata(
         if cover_mime is None or cover_mime != cover_image.content_type:
             raise HTTPException(status_code=400, detail="Album cover must be a valid JPG or PNG image.")
 
-        output_path.write_bytes(input_path.read_bytes())
-
-        if audio_suffix == ".mp3":
-            write_mp3_tags(output_path, cover_data, cover_mime, clean_title, clean_artist, clean_album, clean_genre, clean_year)
-        else:
-            write_m4a_tags(output_path, cover_data, cover_mime, clean_title, clean_artist, clean_album, clean_genre, clean_year)
+        await run_in_threadpool(
+            process_audio_file, input_path, output_path, audio_suffix,
+            cover_data, cover_mime, clean_title, clean_artist, clean_album, clean_genre, clean_year,
+        )
     except Exception as exc:
         input_path.unlink(missing_ok=True)
         output_path.unlink(missing_ok=True)
@@ -189,6 +224,24 @@ def detect_image_mime(data: bytes) -> str | None:
     return None
 
 
+def process_audio_file(
+    input_path: Path,
+    output_path: Path,
+    audio_suffix: str,
+    cover_data: bytes,
+    cover_mime: str,
+    title: str,
+    artist: str,
+    album: str,
+    genre: str,
+    year: str,
+) -> None:
+    """Copy and tag off the event loop without holding a second full audio copy in memory."""
+    shutil.copyfile(input_path, output_path)
+    writer = write_mp3_tags if audio_suffix == ".mp3" else write_m4a_tags
+    writer(output_path, cover_data, cover_mime, title, artist, album, genre, year)
+
+
 def clean_text(value: str, label: str) -> str:
     cleaned = value.strip()
     if len(cleaned) > 200:
@@ -205,11 +258,9 @@ def clean_year_value(value: str) -> str:
 
 def safe_filename_stem(filename: str) -> str:
     stem = Path(filename).stem.strip() or "tagged"
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._") or "tagged"
-
-
-def delete_file(path: Path) -> None:
-    path.unlink(missing_ok=True)
+    stem = re.sub(r"(?:_tagged)+$", "", stem, flags=re.IGNORECASE)
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._") or "tagged"
+    return safe_stem[:120].rstrip("._-") or "tagged"
 
 
 def sweep_outputs(ttl_seconds: int = OUTPUT_TTL_SECONDS) -> None:
@@ -236,6 +287,12 @@ def resolve_output(job_id: str) -> Path | None:
     matches = sorted(OUTPUT_DIR.glob(f"{job_id}_*"))
     for path in matches:
         if path.is_file():
+            try:
+                if time.time() - path.stat().st_mtime > OUTPUT_TTL_SECONDS:
+                    path.unlink(missing_ok=True)
+                    return None
+            except OSError:
+                return None
             return path
     return None
 
@@ -251,33 +308,25 @@ def write_mp3_tags(
     year: str,
 ) -> None:
     audio = MP3(file_path, ID3=ID3)
-    try:
-        audio.add_tags()
-    except ID3NoHeaderError:
-        audio.tags = ID3()
-    except Exception:
-        pass
-
     if audio.tags is None:
-        audio.tags = ID3()
-
-    audio.tags.delall("TIT2")
-    audio.tags.delall("TPE1")
-    audio.tags.delall("TALB")
-    audio.tags.delall("TCON")
-    audio.tags.delall("TDRC")
-    audio.tags.delall("APIC")
+        audio.add_tags()
 
     if title:
+        audio.tags.delall("TIT2")
         audio.tags.add(TIT2(encoding=3, text=title))
     if artist:
+        audio.tags.delall("TPE1")
         audio.tags.add(TPE1(encoding=3, text=artist))
     if album:
+        audio.tags.delall("TALB")
         audio.tags.add(TALB(encoding=3, text=album))
     if genre:
+        audio.tags.delall("TCON")
         audio.tags.add(TCON(encoding=3, text=genre))
     if year:
+        audio.tags.delall("TDRC")
         audio.tags.add(TDRC(encoding=3, text=year))
+    audio.tags.delall("APIC")
     audio.tags.add(
         APIC(
             encoding=3,
